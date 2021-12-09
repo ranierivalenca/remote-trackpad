@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <title>Document</title>
+  <style>
+    * {
+      padding: 0;
+      margin: 0;
+    }
+    #el {
+      position: absolute;
+      width: 100vw;
+      height: 100vh;
+      background: hsl(0, 0%, 20%);
+    }
+    #update {
+      position: absolute;
+      top: 1vw;
+      left: 1vw;
+      width: 10vw;
+      height: 10vw;
+      background: red;
+    }
+    #nosleep {
+      position: absolute;
+      top: 1vw;
+      right: 1vw;
+      width: 10vw;
+      height: 10vw;
+      background: blue;
+    }
+    .green {
+      background: green !important;
+    }
+    #log {
+      position: absolute;
+      bottom: 1vw;
+      left: 1vw;
+      height: 20vw;
+      width: 20vw;
+      background: white;
+      overflow-y: scroll;
+    }
+    </style>
+</head>
+<body>
+  <div id="el"></div>
+  <div id="update">
+  </div>
+  <div id="nosleep">
+  </div>
+  <div id="log"></div>
+  <script src="nosleep.min.js"></script>
+  <script src="https://hammerjs.github.io/dist/hammer.min.js"></script>
+  <script>
+    let log = (t) => {
+      document.getElementById('log').innerHTML = t + '<br>' + document.getElementById('log').innerHTML
+    }
+
+    document.getElementById('update').addEventListener('click', () => {
+      window.location.reload()
+    })
+
+    const nosleepEl = document.getElementById('nosleep')
+
+    const noSleep = new NoSleep()
+
+    nosleepEl.addEventListener('click', function enableNoSleep() {
+      nosleepEl.removeEventListener('click', enableNoSleep, false);
+      noSleep.enable();
+      nosleepEl.className = 'green'
+      // alert('enabled')
+    }, false);
+
+
+
+    const el = document.getElementById('el')
+    const ws = new WebSocket('ws://192.168.0.102:3000')
+
+    let manager = new Hammer.Manager(el)
+    // manager.get('pan').set({ pointers: 1, direction: Hammer.DIRECTION_ALL })
+    let triplePan = new Hammer.Pan({ event: 'threepan', pointers: 3, direction: Hammer.DIRECTION_ALL })
+    let doublePan = new Hammer.Pan({ event: 'twopan', pointers: 2, direction: Hammer.DIRECTION_ALL })
+    let singlePan = new Hammer.Pan({ pointers: 1, direction: Hammer.DIRECTION_ALL })
+
+    let twoTap = new Hammer.Tap({ event: 'twotap', pointers: 2})
+    let threeTap = new Hammer.Tap({ event: 'threetap', pointers: 3})
+
+    let singleTap = new Hammer.Tap({ pointers: 1, interval: 150 })
+    let doubleTap = new Hammer.Tap({ event: 'double', pointers: 1, taps: 2, interval: 150, posThreshold: 100 })
+    singleTap.requireFailure(doubleTap)
+
+
+    let swipe = new Hammer.Swipe({ pointers: 2 })
+    doublePan.recognizeWith(swipe)
+    // singlePan.requireFailure(swipe)
+
+    manager.add(swipe)
+    manager.add(triplePan)
+    manager.add(doublePan)
+    manager.add(singlePan)
+    manager.add(doubleTap)
+    manager.add(singleTap)
+    manager.add(twoTap)
+    manager.add(threeTap)
+
+
+
+    // manager.add(new Hammer.Tap({ event: 'twotap', pointers: 2 }))
+
+    // let press = new Hammer.Press()
+    // press.on('press', evt => {
+    //   ws.send('press')
+    // })
+
+
+    // var mc = Hammer(el)
+    // mc.add(new Hammer.Pan({pointers: 0, direction: Hammer.DIRECTION_ALL}))
+    // mc.add(new Hammer.pan({event: 'twopan', pointers: 2, direction: Hammer.DIRECTION_ALL}))
+    // mc.add(new Hammer.pan({event: 'threepan', pointers: 3, direction: Hammer.DIRECTION_ALL}))
+    // mc.add(new Hammer.tap({pointers: 1}))
+    // mc.add(new Hammer.tap({event: 'twotap', pointers: 2}))
+
+    log('oi')
+    let center = null
+    let getMovement = (evt) => {
+      let { x, y } = evt.center
+      x -= center.x
+      y -= center.y
+
+      x *= Math.abs(evt.velocityX) * 3
+      y *= Math.abs(evt.velocityY) * 3
+
+      center = evt.center
+      x = x.toFixed(2)
+      y = y.toFixed(2)
+
+      return {x, y}
+    }
+
+    let lastTapTime = 0
+    pressSetted = false
+
+    manager.on('hammer.input', evt => {
+      switch (evt.eventType) {
+        case Hammer.INPUT_START:
+          if (new Date().getTime() - lastTapTime < 200) {
+            pressSetted = true
+          }
+          lastTapTime = new Date().getTime()
+          break
+        case Hammer.INPUT_END:
+          ws.send('rls')
+          pressSetted = false
+        break;
+      }
+    })
+    manager.on('panstart', evt => {
+      center = evt.center
+    })
+    manager.on('pan', evt => {
+      let {x, y} = getMovement(evt)
+      if (pressSetted) {
+        ws.send('prs')
+        pressSetted = false
+      }
+      ws.send(`mv:${x},${y}`)
+    })
+
+    manager.on('twopanstart', evt => {
+      center = evt.center
+    })
+    manager.on('twopan', evt => {
+      let { x, y } = getMovement(evt)
+
+      ws.send(`scr:${x},${y}`)
+    })
+
+    manager.on('threepanstart', evt => {
+      center = evt.center
+    })
+    manager.on('threepanend', evt => {
+      let { x, y } = getMovement(evt)
+      ws.send(`act:${x},${y}`)
+    })
+
+    manager.on('tap', evt => {
+      ws.send('clk')
+      navigator.vibrate(50)
+    })
+
+    manager.on('twotap', evt => {
+      ws.send('rclk')
+      navigator.vibrate(50)
+    })
+
+    manager.on('threetap', evt => {
+      ws.send('mclk')
+    })
+
+    manager.on('double', evt => {
+      ws.send('dbc')
+      navigator.vibrate(70)
+    })
+
+    manager.on('swipeleft', evt => {
+      ws.send('swp:left')
+    })
+    manager.on('swiperight', evt => {
+      ws.send('swp:right')
+    })
+
+    // hammer
+    //   .on('tap', evt => {
+    //     ws.send('clk')
+    //   })
+    //   .on('press', evt => {
+    //     ws.send('prs')
+    //   })
+    //   .on('hammer.input', evt => {
+    //     if(evt.eventType == Hammer.INPUT_END) {
+    //       ws.send('rls')
+    //     }
+    //   })
+
+
+    // hammer.on('panleft panright panup pandown tap press', evt => {
+    //   ws.send(`${evt.type}:${evt.pointers.length}`)
+    // })
+
+
+
+
+
+
+    // ws.onmessage = msg => {
+    //   let data = msg.data
+    //   document.write(msg)
+    // }
+
+    // let firstTouch = null
+    // let lastTouch = null
+    // let clickTimeout = 0
+    // let clickSetted = false
+    // let pressSetted = false
+    // let threeSetted = false
+    // let lastClick = 0
+
+
+    // let getTouchesMean = touches => {
+    //   let [x, y] = [0, 0]
+    //   log(touches.length)
+    //   for (let i = 0; i < touches.length; i++) {
+    //     x += touches[i].pageX - lastTouch.touches[i].pageX
+    //     y += touches[i].pageY - lastTouch.touches[i].pageY
+    //   }
+    //   x /= touches.length
+    //   y /= touches.length
+
+    //   x *= window.devicePixelRatio
+    //   y *= window.devicePixelRatio
+    //   return [x, y]
+    // }
+
+    // el.addEventListener('touchstart', evt => {
+    //   evt.preventDefault()
+    //   console.log('touching')
+    //   lastTouch = evt
+    //   firstTouch = evt
+
+    //   if (evt.touches.length == 3) {
+    //     threeSetted = true
+    //   }
+
+    //   // ws.send('prs')
+    //   ws.send(`${new Date().getTime() - lastClick}`)
+    //   if (new Date().getTime() - lastClick < 200) {
+    //     clickSetted = false
+
+    //     pressSetted = true
+    //     // setTimeout(() => {
+    //     //   if (!pressSetted) {
+    //     //     return
+    //     //   }
+    //     //   ws.send('prs')
+    //     //   pressSetted = false
+    //     // }, 100);
+    //   }
+
+    //   // ws.send(evt.touches.length)
+    // })
+    // el.addEventListener('touchmove', evt => {
+    //   // ws.send(touch.pageY - lastTouch.pageY)
+
+    //   if (evt.touches.length == 1) {
+    //     let [x, y] = getTouchesMean(evt.touches)
+    //     lastTouch = evt
+
+    //     if (pressSetted) {
+    //       ws.send('prs')
+    //       pressSetted = false
+    //     }
+    //     ws.send(`mv:${x.toFixed(1)},${y.toFixed(1)}`)
+    //   } else if (evt.touches.length == 2) {
+    //     [x, y] = getTouchesMean(evt.touches)
+    //     if (Math.abs(x) > 1 || Math.abs(y) > 1) {
+    //       lastTouch = evt
+    //       ws.send(`scr:${x},${y}`)
+    //     }
+    //   }
+
+
+    //   // console.log('moving')
+    //   // ws.send(evt.touches.length)
+    //   // console.log(evt)
+    // })
+
+    // let setClick = () => {
+    //   if (lastTouch.touches.length == 2) {
+    //     ws.send('rclk')
+    //     return
+    //   }
+    //   if (pressSetted) {
+    //     // setDblClick()
+    //     return
+    //   }
+    //   ws.send('clk')
+    //   navigator.vibrate(50)
+    //   lastClick = new Date().getTime()
+    //   clickSetted = true
+    //   // setTimeout(() => {
+    //   //   if (!clickSetted) {
+    //   //     return
+    //   //   }
+    //   //   ws.send('clk')
+    //   //   console.warn('clk')
+    //   //   navigator.vibrate(50)
+    //   //   clickSetted = false
+    //   // }, 200);
+    // }
+
+    // // let setDblClick = () => {
+    // //   clickSetted = false
+    // //   pressSetted = false
+    // //   console.warn('dbc')
+    // //   ws.send('dbc')
+    // //   navigator.vibrate(50)
+    // // }
+
+    // el.addEventListener('touchend', evt => {
+    //   log('end: ' + evt.touches.length)
+    //   console.log('ended')
+    //   if (evt.timeStamp - firstTouch.timeStamp < 100) {
+    //     setClick()
+    //   }
+    //   if (threeSetted) {
+    //     let [x, y] = getTouchesMean(evt.touches)
+    //     ws.send(`act:${x},${y}`)
+    //     threeSetted = false
+    //   }
+    //   lastTouch = evt
+    //   ws.send('rls')
+    //   pressSetted = false
+    //   // console.log(evt)
+    // })
+  </script>
+</body>
+</html>
