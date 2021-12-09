@@ -3,6 +3,7 @@ import websockets
 import math
 import pyautogui
 import mouse
+
 from mouse import _os_mouse
 from time import time
 
@@ -16,12 +17,6 @@ WHEEL_DELTA = _os_mouse.WHEEL_DELTA
 user32 = _os_mouse.user32
 
 print(mouse.get_position())
-
-# for i in range(20):
-#   print(mouse.get_position())
-#   mouse.move(0, 0, absolute=False)
-#   print(mouse.get_position())
-
 
 async def handle(websocket):
   lastTime = time()
@@ -119,9 +114,6 @@ async def handle(websocket):
     except Exception as e:
       print(e)
       pass
-    # print(x, y)
-
-    # pyautogui.moveRel(x, y, 0)
 
 async def main():
   async with websockets.serve(handle, "0.0.0.0", 3000):
